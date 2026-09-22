@@ -3,7 +3,7 @@
 Four tables so far: Customer, Product, Quote, Policy.  (You add Claim in Phase 2.)
 Flow: Customer + Product -> Quote -> Policy -> Claim
 """
-from datetime import date, datetime
+from datetime import date, datetime,timezone
 from enum import Enum
 from typing import Optional
 
@@ -26,8 +26,14 @@ class PolicyStatus(str, Enum):
     CANCELLED = "Cancelled"
 
 
-# --------------------------------------------------------------------------- #
-# Customer
+class ClaimStatus(str, Enum):
+    FILED = "Filed"
+    UNDER_REVIEW = "Under Review"
+    APPROVED = "Approved"
+    REJECTED = "Rejected"
+
+#custmer    
+
 # --------------------------------------------------------------------------- #
 class CustomerBase(SQLModel):
     name: str = Field(min_length=2, max_length=80)
@@ -38,7 +44,9 @@ class CustomerBase(SQLModel):
 
 class Customer(CustomerBase, table=True):
     id: int | None = Field(default=None, primary_key=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
 
     quotes: list["Quote"] = Relationship(back_populates="customer")
     policies: list["Policy"] = Relationship(back_populates="customer")
@@ -87,7 +95,9 @@ class QuoteBase(SQLModel):
 class Quote(QuoteBase, table=True):
     id: int | None = Field(default=None, primary_key=True)
     premium: float
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(
+    default_factory=lambda: datetime.now(timezone.utc)
+    )
 
     customer: Customer = Relationship(back_populates="quotes")
     product: Product = Relationship()
@@ -122,11 +132,14 @@ class Policy(PolicyBase, table=True):
     end_date: date
     status: PolicyStatus = Field(default=PolicyStatus.ACTIVE)
     vehicle_registration: str | None = Field(default=None, description="Motor policies only")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(
+    default_factory=lambda: datetime.now(timezone.utc)
+    )
 
     quote: Quote = Relationship(back_populates="policy")
     customer: Customer = Relationship(back_populates="policies")
     product: Product = Relationship()
+    claims: list["Claim"] = Relationship(back_populates="policy")
 
 
 class PolicyCreate(PolicyBase):
@@ -150,3 +163,41 @@ class PolicyRead(SQLModel):
 
 class PolicyStatusUpdate(SQLModel):
     status: PolicyStatus
+
+
+# --------------------------------------------------------------------------- #
+# Claim
+# --------------------------------------------------------------------------- #
+class ClaimBase(SQLModel):
+    policy_id: int = Field(foreign_key="policy.id")
+    amount: float = Field(gt=0)
+    description: str = Field(min_length=5, max_length=500)
+    incident_date: date
+    vehicle_registration: str | None = Field(default=None, description="Required for Motor claims")
+
+
+class Claim(ClaimBase, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    status: ClaimStatus = Field(default=ClaimStatus.FILED)
+    reason: str | None = Field(default=None, description="Why a claim was rejected")
+    created_at: datetime = Field(
+    default_factory=lambda: datetime.now(timezone.utc)
+    )
+
+    policy: Policy = Relationship(back_populates="claims")
+
+
+class ClaimCreate(ClaimBase):
+    pass
+
+
+class ClaimRead(ClaimBase):
+    id: int
+    status: ClaimStatus
+    reason: str | None
+    created_at: datetime
+
+
+class ClaimStatusUpdate(SQLModel):
+    status: ClaimStatus
+    reason: str | None = None

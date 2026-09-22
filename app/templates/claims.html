@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+{% block title %}Claims{% endblock %}
+
+{% block content %}
+
+<div class="page-head">
+  <div class="container">
+
+    <div>
+      <span class="eyebrow">Claims</span>
+
+      <h1>
+        Claim status
+      </h1>
+
+      <p>
+        {{ claims|length }} shown
+      </p>
+    </div>
+
+    <div>
+      <a href="/policies" class="btn btn--ghost">
+        Browse policies
+      </a>
+    </div>
+
+  </div>
+</div>
+
+
+<section>
+
+  <div class="container">
+
+    <!-- Claim Status Tabs -->
+    <div class="tabs">
+
+      <a href="/claims" class="{% if not status %}active{% endif %}">
+        All
+      </a>
+
+      <a href="/claims?status=Filed" class="{% if status == 'Filed' %}active{% endif %}">
+        Filed
+      </a>
+
+      <a href="/claims?status=Under%20Review" class="{% if status == 'Under Review' %}active{% endif %}">
+        Under Review
+      </a>
+
+      <a href="/claims?status=Approved" class="{% if status == 'Approved' %}active{% endif %}">
+        Approved
+      </a>
+
+      <a href="/claims?status=Rejected" class="{% if status == 'Rejected' %}active{% endif %}">
+        Rejected
+      </a>
+
+    </div>
+
+
+    <!-- Claims List -->
+    <div class="card">
+
+      {% if claims %}
+
+      {% for claim in claims %}
+
+      <div class="claim-row">
+
+        <!-- Claim Information -->
+        <div>
+
+          <strong>
+            Claim #{{ claim.id }}
+          </strong>
+
+          <div class="small muted">
+
+            Policy:
+
+            <a href="/policies/{{ claim.policy_id }}">
+              {{ claim.policy.policy_number }}
+            </a>
+
+          </div>
+
+          <div class="small muted">
+            {{ claim.description }}
+          </div>
+
+          <div class="small muted">
+            Incident date:
+            {{ claim.incident_date.strftime('%d %b %Y') }}
+          </div>
+
+        </div>
+
+
+        <!-- Claim Amount -->
+        <div>
+
+          <strong>
+            {{ claim.amount | money }}
+          </strong>
+
+        </div>
+
+
+        <!-- Claim Status -->
+        <div>
+
+          <span class="pill">
+            {{ claim.status.value }}
+          </span>
+
+        </div>
+
+      </div>
+
+      {% endfor %}
+
+
+      {% else %}
+
+      <!-- No Claims -->
+      <div class="empty">
+
+        <p>
+          No claims.
+        </p>
+
+      </div>
+
+      {% endif %}
+
+    </div>
+
+  </div>
+
+</section>
+
+{% endblock %}

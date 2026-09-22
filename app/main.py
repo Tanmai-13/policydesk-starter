@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlmodel import Session
 
 from app.db import create_db_and_tables, engine
-from app.routers import customers, pages, policies, products, quotes
+from app.routers import claims, customers, pages, policies, products, quotes
 from app.seed import seed
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -41,6 +41,7 @@ app.include_router(customers.router)
 app.include_router(products.router)
 app.include_router(quotes.router)
 app.include_router(policies.router)
+app.include_router(claims.router)
 app.include_router(pages.router)
 
 
