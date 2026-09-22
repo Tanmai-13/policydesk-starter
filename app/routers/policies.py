@@ -1,20 +1,6 @@
-"""Policies API.   *** DAY 2, LAB 2: YOUR CODE HERE ***
 
-POST  /api/policies              -> issue a policy from a quote
-PATCH /api/policies/{id}/status  -> Active / Lapsed / Cancelled
+"""Policies API."""
 
-Rules for issuing
-    404 if the quote does not exist
-    409 if the quote already has a policy
-    422 if the product is MOTOR and no vehicle_registration was given
-    policy_number = PD-<PRODUCT CODE>-<start year>-<5-digit sequence>, e.g. PD-MOTOR-2026-00007
-    end_date     = start_date + (365 x tenure_years) days - 1 day
-    copy customer_id, product_id, sum_insured and premium from the quote
-
-Rules for status
-    404 if the policy does not exist
-    409 if the policy is already Cancelled (cancelled is final)
-"""
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -34,42 +20,156 @@ from app.models import (
 router = APIRouter(prefix="/api/policies", tags=["policies"])
 
 
-def next_policy_number(session: Session, product_code: ProductCode, start: date) -> str:
-    """PD-<PRODUCT>-<YEAR>-<sequence>, e.g. PD-MOTOR-2026-00007. (Given.)"""
+def next_policy_number(
+    session: Session,
+    product_code: ProductCode,
+    start: date,
+) -> str:
+    """Generate policy number."""
     count = session.exec(select(Policy.id)).all()
-    return f"PD-{product_code.value}-{start.year}-{len(count) + 1:05d}"
+
+    return (
+        f"PD-{product_code.value}-{start.year}-{len(count) + 1:05d}"
+    )
 
 
-def issue_policy(payload: PolicyCreate, session: Session) -> Policy:
-    """Shared by the API and the HTML form. Raise HTTPException with the right status code on failure."""
-    # TODO (Day 2, Lab 2): follow "Rules for issuing" in the module docstring.
-    #   Hints: `quote.policy` is None until a policy exists · `quote.product.code` tells you if it is MOTOR ·
-    #          end_date = start_date + timedelta(days=365 * tenure) - timedelta(days=1) · next_policy_number() is given.
-    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Day 2, Lab 2: implement issue_policy in app/routers/policies.py")
+def issue_policy(
+    payload: PolicyCreate,
+    session: Session,
+) -> Policy:
+    """Issue a policy from a quote."""
+
+    # 1. Find quote
+    quote = session.get(Quote, payload.quote_id)
+
+    if not quote:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Quote not found",
+        )
+
+    # 2. Check duplicate policy
+    if quote.policy is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Quote already has a policy",
+        )
+
+    # 3. Get product
+    product = quote.product
+
+    # 4. Motor product requires vehicle registration
+    if product.code == ProductCode.MOTOR:
+        if not payload.vehicle_registration:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Vehicle registration is required for motor policies",
+            )
+
+    # 5. Calculate policy dates
+    start_date = payload.start_date
+
+    end_date = (
+        start_date
+        + timedelta(days=365 * quote.tenure_years)
+        - timedelta(days=1)
+    )
+
+    # 6. Create policy
+    policy = Policy(
+        policy_number=next_policy_number(
+            session,
+            product.code,
+            start_date,
+        ),
+        customer_id=quote.customer_id,
+        product_id=quote.product_id,
+        quote_id=quote.id,
+        sum_insured=quote.sum_insured,
+        premium=quote.premium,
+        start_date=start_date,
+        end_date=end_date,
+        tenure_years=quote.tenure_years,
+        vehicle_registration=payload.vehicle_registration,
+        status=PolicyStatus.ACTIVE,
+    )
+
+    # 7. Save policy
+    session.add(policy)
+    session.commit()
+    session.refresh(policy)
+
+    return policy
 
 
 @router.get("", response_model=list[PolicyRead])
-def list_policies(status_filter: PolicyStatus | None = None, session: Session = Depends(get_session)):
+def list_policies(
+    status_filter: PolicyStatus | None = None,
+    session: Session = Depends(get_session),
+):
     stmt = select(Policy).order_by(Policy.created_at.desc())
+
     if status_filter:
         stmt = stmt.where(Policy.status == status_filter)
+
     return session.exec(stmt).all()
 
 
-@router.post("", response_model=PolicyRead, status_code=status.HTTP_201_CREATED)
-def create_policy(payload: PolicyCreate, session: Session = Depends(get_session)):
+@router.post(
+    "",
+    response_model=PolicyRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_policy(
+    payload: PolicyCreate,
+    session: Session = Depends(get_session),
+):
     return issue_policy(payload, session)
 
 
 @router.get("/{policy_id}", response_model=PolicyRead)
-def get_policy(policy_id: int, session: Session = Depends(get_session)):
+def get_policy(
+    policy_id: int,
+    session: Session = Depends(get_session),
+):
     policy = session.get(Policy, policy_id)
+
     if not policy:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Policy not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Policy not found",
+        )
+
     return policy
 
 
 @router.patch("/{policy_id}/status", response_model=PolicyRead)
-def update_policy_status(policy_id: int, payload: PolicyStatusUpdate, session: Session = Depends(get_session)):
-    # TODO (Day 2, Lab 2): 404 if missing · 409 if already Cancelled (cancelled is final) · else set status, commit, refresh, return.
-    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Day 2, Lab 2: implement update_policy_status")
+def update_policy_status(
+    policy_id: int,
+    payload: PolicyStatusUpdate,
+    session: Session = Depends(get_session),
+):
+    # 1. Find policy
+    policy = session.get(Policy, policy_id)
+
+    if not policy:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Policy not found",
+        )
+
+    # 2. Cancelled is final
+    if policy.status == PolicyStatus.CANCELLED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cancelled policy cannot be changed",
+        )
+
+    # 3. Update status
+    policy.status = payload.status
+
+    session.add(policy)
+    session.commit()
+    session.refresh(policy)
+
+    return policy
